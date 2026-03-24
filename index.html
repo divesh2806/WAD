@@ -1,0 +1,281 @@
+
+<!DOCTYPE html>
+<html ng-app="app">
+<head>
+    <title>AngularJS Auth App - FINAL</title>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular-route.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular-cookies.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: linear-gradient(135deg,#487025,#2b7138);
+            margin:0; padding:20px;
+        }
+        .container { max-width:400px; margin:40px auto; }
+        form, .profile {
+            background:white;
+            padding:25px;
+            border-radius:10px;
+            box-shadow:0 10px 30px rgba(0,0,0,0.2);
+        }
+        input, select {
+            width:100%;
+            padding:10px;
+            margin:8px 0;
+        }
+        button {
+            width:100%;
+            padding:10px;
+            background:#ea6685;
+            color:white;
+            border:none;
+            cursor:pointer;
+        }
+        .error { color:red; }
+        .success { color:rgb(48, 58, 149); text-align:center; }
+    </style>
+</head>
+
+<body>
+<div ng-view></div>
+
+<script>
+angular.module('app',['ngRoute','ngCookies'])
+
+.config(function($routeProvider,$locationProvider){
+    $locationProvider.hashPrefix('');
+
+    $routeProvider
+    .when('/',{
+        controller:'ProfileCtrl',
+        templateUrl:'profile.html'
+    })
+    .when('/login',{
+        controller:'LoginCtrl',
+        templateUrl:'login.html'
+    })
+    .when('/register',{
+        controller:'RegisterCtrl',
+        templateUrl:'register.html'
+    })
+    .otherwise({redirectTo:'/login'});
+});
+
+// ---------------- USER SERVICE ----------------
+angular.module('app').factory('UserService',function($q,$timeout,$filter){
+
+    function getUsers(){
+        return JSON.parse(localStorage.getItem('users') || '[]');
+    }
+
+    function setUsers(users){
+        localStorage.setItem('users',JSON.stringify(users));
+    }
+
+    return {
+
+        GetByUsername:function(username){
+            let d=$q.defer();
+            $timeout(()=>{
+                let user=$filter('filter')(getUsers(),{username})[0];
+                d.resolve(user);
+            });
+            return d.promise;
+        },
+
+        Create:function(user){
+            let d=$q.defer();
+            $timeout(()=>{
+                let users=getUsers();
+
+                let exists=$filter('filter')(users,{username:user.username})[0];
+
+                if(exists){
+                    d.resolve({success:false,message:"Username already exists"});
+                } else {
+                    user.id=users.length+1;
+                    users.push(user);
+                    setUsers(users);
+                    d.resolve({success:true,message:"Registration successful"});
+                }
+            },1000);
+
+            return d.promise;
+        }
+    };
+});
+
+// ---------------- AUTH SERVICE ----------------
+angular.module('app').factory('AuthenticationService',function($cookies,$rootScope){
+
+    return {
+
+        SetCredentials:function(user){
+            $rootScope.globals={currentUser:user};
+            $cookies.putObject('globals',$rootScope.globals);
+        },
+
+        ClearCredentials:function(){
+            $rootScope.globals={};
+            $cookies.remove('globals');
+        }
+    };
+});
+
+// ---------------- CONTROLLERS ----------------
+angular.module('app').controller('LoginCtrl',
+function($scope,$location,UserService,AuthenticationService){
+
+    if($scope.$root.globals?.currentUser){
+        $location.path('/');
+    }
+
+    $scope.login=function(){
+        $scope.error='';
+        $scope.loading=true;
+
+        UserService.GetByUsername($scope.username).then(user=>{
+            $scope.loading=false;
+
+            if(user && user.password=== $scope.password){
+                AuthenticationService.SetCredentials(user);
+                $location.path('/');
+            } else {
+                $scope.error="Invalid credentials";
+            }
+        });
+    };
+});
+
+angular.module('app').controller('RegisterCtrl',
+function($scope,$location,UserService,$timeout){
+
+    $scope.user={skill:50};
+
+    $scope.register=function(){
+
+        if($scope.user.password !== $scope.user.confirmPassword){
+            $scope.error="Passwords do not match";
+            return;
+        }
+
+        $scope.loading=true;
+        $scope.error='';
+
+        UserService.Create($scope.user).then(res=>{
+            $scope.loading=false;
+
+            if(res.success){
+                $scope.success=res.message;
+                $timeout(()=> $location.path('/login'),1500);
+            } else {
+                $scope.error=res.message;
+            }
+        });
+    };
+});
+
+angular.module('app').controller('ProfileCtrl',
+function($scope,$rootScope,$location,AuthenticationService){
+
+    if(!$rootScope.globals?.currentUser){
+        $location.path('/login');
+    }
+
+    $scope.user=$rootScope.globals.currentUser;
+
+    $scope.logout=function(){
+        AuthenticationService.ClearCredentials();
+        $location.path('/login');
+    };
+});
+
+// ---------------- TEMPLATES ----------------
+angular.module('app').run(function($templateCache){
+
+$templateCache.put('login.html',`
+<div class="container">
+<form ng-submit="login()">
+<h2>Login</h2>
+
+<input ng-model="username" placeholder="Username" required>
+<input type="password" ng-model="password" placeholder="Password" required>
+
+<button>Login</button>
+
+<p class="error">{{error}}</p>
+
+<p style="text-align:center">
+<a href="#/register">Register</a>
+</p>
+</form>
+</div>
+`);
+
+$templateCache.put('register.html',`
+<div class="container">
+<form ng-submit="register()">
+
+<h2>Register</h2>
+
+<input ng-model="user.name" placeholder="Full Name" required>
+<input type="email" ng-model="user.email" placeholder="Email" required>
+<input ng-model="user.username" placeholder="Username" required>
+
+<input ng-model="user.address" placeholder="Address" required>
+<input ng-model="user.pincode" placeholder="Pin Code" required>
+
+<select ng-model="user.gender" required>
+<option value="">Select Gender</option>
+<option>Male</option>
+<option>Female</option>
+<option>Other</option>
+</select>
+
+<label>Skill Level: {{user.skill}}</label>
+<input type="range" min="0" max="100" ng-model="user.skill">
+
+<input type="password" ng-model="user.password" placeholder="Password" required>
+<input type="password" ng-model="user.confirmPassword" placeholder="Confirm Password" required>
+
+<button>{{loading ? 'Creating...' : 'Register'}}</button>
+
+<p class="error">{{error}}</p>
+<p class="success">{{success}}</p>
+
+<p style="text-align:center">
+<a href="#/login">Back to Login</a>
+</p>
+
+</form>
+</div>
+`);
+
+$templateCache.put('profile.html',`
+<div class="container">
+<div class="profile">
+
+<h2>Welcome {{user.name}}</h2>
+
+<p><b>Username:</b> {{user.username}}</p>
+<p><b>Email:</b> {{user.email}}</p>
+<p><b>Address:</b> {{user.address}}</p>
+<p><b>Pin Code:</b> {{user.pincode}}</p>
+<p><b>Gender:</b> {{user.gender}}</p>
+<p><b>Skill Level:</b> {{user.skill}}</p>
+
+<button ng-click="logout()" style="background:red;margin-top:20px">
+Logout
+</button>
+
+</div>
+</div>
+`);
+});
+</script>
+
+</body>
+</html>
